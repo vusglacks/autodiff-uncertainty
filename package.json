@@ -1,0 +1,9 @@
+{
+  "name": "autodiff-uncertainty",
+  "version": "1.0.0",
+  "description": "자동 미분을 이용한 실험 불확도 자동 계산기",
+  "private": true,
+  "scripts": {
+    "test": "node test.js"
+  }
+}

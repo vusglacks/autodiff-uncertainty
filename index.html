@@ -1,0 +1,1476 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="계산식과 측정값을 넣으면 자동 미분으로 편미분을 구해 불확도를 전파시키는 계산기">
+<title>불확도 계산기</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --ground: #eceff5;
+    --grid: rgba(36, 64, 142, 0.075);
+    --surface: #ffffff;
+    --surface-2: #f5f7fb;
+    --ink: #141a29;
+    --muted: #5b6579;
+    --faint: #8a93a6;
+    --line: #d2d8e4;
+    --line-soft: #e3e8f1;
+    --accent: #24408e;
+    --accent-ink: #1b3273;
+    --accent-soft: #e2e9f9;
+    --signal: #a86a12;
+    --signal-soft: #f6ecd8;
+    --danger: #a2312d;
+    --danger-soft: #f7e4e3;
+    --shadow: 0 1px 2px rgba(20, 26, 41, .06), 0 8px 24px -16px rgba(20, 26, 41, .28);
+    --sans: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e121c;
+      --grid: rgba(150, 175, 255, 0.055);
+      --surface: #161b28;
+      --surface-2: #1c2231;
+      --ink: #e7ebf4;
+      --muted: #9ba5bc;
+      --faint: #6d778e;
+      --line: #2a3145;
+      --line-soft: #222839;
+      --accent: #8aa5f2;
+      --accent-ink: #b3c4f8;
+      --accent-soft: #1d2740;
+      --signal: #d9a84e;
+      --signal-soft: #2e2716;
+      --danger: #e0817b;
+      --danger-soft: #331d1c;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0e121c;
+    --grid: rgba(150, 175, 255, 0.055);
+    --surface: #161b28;
+    --surface-2: #1c2231;
+    --ink: #e7ebf4;
+    --muted: #9ba5bc;
+    --faint: #6d778e;
+    --line: #2a3145;
+    --line-soft: #222839;
+    --accent: #8aa5f2;
+    --accent-ink: #b3c4f8;
+    --accent-soft: #1d2740;
+    --signal: #d9a84e;
+    --signal-soft: #2e2716;
+    --danger: #e0817b;
+    --danger-soft: #331d1c;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 8px 24px -16px rgba(0, 0, 0, .8);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background-color: var(--ground);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 40px 22px 72px;
+  }
+
+  /* ---------- 머리말 ---------- */
+  header { margin-bottom: 28px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+
+  h1 {
+    font-size: clamp(28px, 4.2vw, 40px);
+    font-weight: 600;
+    letter-spacing: -.02em;
+    margin: 0 0 10px;
+    text-wrap: balance;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--muted);
+    font-size: 15.5px;
+  }
+
+  /* ---------- 레이아웃 ---------- */
+  .cols {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.06fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  @media (min-width: 901px) {
+    .cols > .stack:first-child {
+      position: sticky;
+      top: 24px;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .cols { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line-soft);
+    background: var(--surface-2);
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .card-note { font-size: 12px; color: var(--faint); }
+  .card-body { padding: 18px; }
+
+  /* ---------- 입력 ---------- */
+  label.field {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 7px;
+    font-weight: 500;
+  }
+
+  input[type="text"] {
+    width: 100%;
+    padding: 11px 13px;
+    font-family: var(--mono);
+    font-size: 16px;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    transition: border-color .12s, box-shadow .12s;
+  }
+
+  input[type="text"]:focus-visible {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  #formula { font-size: 18px; letter-spacing: .01em; }
+
+  .presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+  }
+
+  .preset {
+    font: inherit;
+    font-size: 12.5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .12s;
+  }
+
+  .preset:hover { border-color: var(--accent); color: var(--accent); }
+  .preset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 16px;
+    padding-top: 15px;
+    border-top: 1px dashed var(--line-soft);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .opt { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  .opt input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+  /* ---------- 변수 표 ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+  th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--faint);
+    font-family: var(--mono);
+    padding: 0 8px 9px;
+    white-space: nowrap;
+  }
+
+  th:first-child, td:first-child { padding-left: 0; }
+  th:last-child, td:last-child { padding-right: 0; }
+
+  td {
+    padding: 5px 8px;
+    border-top: 1px solid var(--line-soft);
+    vertical-align: middle;
+  }
+
+  .varname {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+
+  td input[type="text"] {
+    padding: 7px 9px;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .empty-note { color: var(--faint); font-size: 13.5px; margin: 0; }
+
+  /* ---------- 결과 ---------- */
+  .result-body { padding: 22px 18px 18px; }
+
+  .result-value {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(26px, 5vw, 38px);
+    font-weight: 500;
+    letter-spacing: -.01em;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+
+  .pm { color: var(--muted); margin: 0 .18em; }
+  .unc { color: var(--signal); }
+
+  .result-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .result-sub b { font-family: var(--mono); font-weight: 500; color: var(--ink); }
+
+  /* 값 ± 불확도를 눈금 위에 표시 */
+  .band {
+    position: relative;
+    height: 34px;
+    margin-top: 18px;
+    border-top: 1px solid var(--line-soft);
+    padding-top: 16px;
+  }
+
+  .band-track {
+    position: absolute;
+    left: 0; right: 0; top: 22px;
+    height: 2px;
+    background: var(--line);
+  }
+
+  .band-range {
+    position: absolute;
+    top: 16px;
+    height: 14px;
+    background: var(--signal-soft);
+    border-left: 2px solid var(--signal);
+    border-right: 2px solid var(--signal);
+  }
+
+  .band-tick {
+    position: absolute;
+    top: 12px;
+    width: 2px;
+    height: 22px;
+    background: var(--accent);
+  }
+
+  .band-label {
+    position: absolute;
+    top: 0;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+
+  /* ---------- 기여도 ---------- */
+  .share-row {
+    display: grid;
+    grid-template-columns: 46px minmax(0, 1fr) 52px;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 0;
+  }
+
+  .share-bar {
+    height: 9px;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .share-fill {
+    height: 100%;
+    background: var(--accent);
+    transition: width .25s ease;
+  }
+
+  .share-row.dominant .share-fill { background: var(--signal); }
+  .share-row.dominant .share-pct { color: var(--signal); font-weight: 600; }
+
+  .share-pct {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 13px;
+    text-align: right;
+    color: var(--muted);
+  }
+
+  .verdict {
+    margin: 14px 0 0;
+    padding: 11px 13px;
+    background: var(--signal-soft);
+    border-left: 3px solid var(--signal);
+    border-radius: 0 4px 4px 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+
+  /* ---------- 검증 · 트리 ---------- */
+  details {
+    border-top: 1px solid var(--line-soft);
+  }
+
+  details summary {
+    padding: 12px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  details summary::-webkit-details-marker { display: none; }
+
+  details summary::before {
+    content: "+";
+    font-family: var(--mono);
+    color: var(--accent);
+    font-size: 15px;
+    line-height: 1;
+  }
+
+  details[open] summary::before { content: "−"; }
+  details summary:hover { color: var(--ink); }
+  details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  details .inner { padding: 0 18px 18px; }
+
+  .tree {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.75;
+    white-space: pre;
+    overflow-x: auto;
+    color: var(--muted);
+    margin: 0;
+  }
+
+  .tree .op { color: var(--accent); font-weight: 600; }
+  .tree .vr { color: var(--signal); font-weight: 600; }
+
+  .check-ok { color: var(--accent); font-weight: 600; }
+  .check-bad { color: var(--danger); font-weight: 600; }
+
+  .error {
+    padding: 12px 14px;
+    background: var(--danger-soft);
+    border-left: 3px solid var(--danger);
+    border-radius: 0 4px 4px 0;
+    color: var(--danger);
+    font-size: 13.5px;
+  }
+
+  .error code { font-family: var(--mono); }
+
+  /* ---------- 꼬리말 ---------- */
+  footer {
+    margin-top: 44px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 72ch;
+  }
+
+  footer h2 {
+    font-size: 12px;
+    font-family: var(--mono);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+
+  footer p { margin: 0 0 10px; }
+  footer code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+
+  .formula-display {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    background: var(--surface-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin: 10px 0 0;
+    overflow-x: auto;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+
+  /* ---------- 계산 과정 ---------- */
+  .step { padding: 14px 0; border-top: 1px dashed var(--line-soft); }
+  .step:first-child { border-top: none; padding-top: 4px; }
+
+  .step-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 9px; }
+
+  .step-no {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .08em;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border-radius: 2px;
+    padding: 2px 7px;
+    white-space: nowrap;
+  }
+
+  .step-title { font-size: 13.5px; font-weight: 600; }
+
+  .step-body {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.95;
+    color: var(--ink);
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 2px;
+  }
+
+  .step-body .lbl { color: var(--accent); }
+  .step-body .eq { color: var(--faint); margin: 0 .35em; }
+  .step-body .val { color: var(--muted); }
+  .step-body .hi { color: var(--signal); font-weight: 600; }
+  .step-note { font-family: var(--sans); font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+<style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">자동 미분 · Automatic Differentiation</p>
+    <h1>실험 불확도 계산기</h1>
+    <p class="lede">
+      계산식과 측정값을 넣으면 각 변수의 편미분을 자동으로 구해 오차를 전파시킵니다.
+      손으로 미분할 필요 없이 임의의 수식을 그대로 쓸 수 있습니다.
+    </p>
+  </header>
+
+  <div class="cols">
+    <!-- 왼쪽: 입력 -->
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">계산식</h2>
+          <span class="card-note">＋ － × ÷ ^ · sin cos tan · exp ln log sqrt · pi e</span>
+        </div>
+        <div class="card-body">
+          <label class="field" for="formula">측정값으로부터 구하려는 값의 식</label>
+          <input type="text" id="formula" value="4*pi^2*L / T^2" spellcheck="false" autocomplete="off">
+
+          <div class="presets" id="presets"></div>
+
+          <div class="opts">
+            <label class="opt">
+              <input type="checkbox" id="degrees">
+              삼각함수 입력을 도(°)로
+            </label>
+            <label class="opt">
+              <input type="checkbox" id="forceTwo">
+              불확도 유효숫자 2자리 고정
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">측정값</h2>
+          <span class="card-note">식에서 자동으로 찾아낸 변수</span>
+        </div>
+        <div class="card-body" id="varsBox"></div>
+      </section>
+    </div>
+
+    <!-- 오른쪽: 결과 -->
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">결과</h2>
+          <span class="card-note" id="roundNote"></span>
+        </div>
+        <div class="result-body" id="resultBox"></div>
+        <details id="treeDetails">
+          <summary>계산 트리 보기</summary>
+          <div class="inner">
+            <p class="card-note" style="margin:0 0 10px">
+              파서가 수식을 이 구조로 바꾼 뒤, 자동 미분이 이 트리를 한 번 훑으며 값과 편미분을 함께 계산합니다.
+            </p>
+            <pre class="tree" id="tree"></pre>
+          </div>
+        </details>
+        <details id="stepDetails">
+          <summary>계산 과정 펼쳐 보기</summary>
+          <div class="inner" id="steps"></div>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">오차 기여도</h2>
+          <span class="card-note">어느 측정이 오차를 지배하는가</span>
+        </div>
+        <div class="card-body" id="shareBox"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2 class="card-title">편미분</h2>
+          <span class="card-note">∂f/∂x · 각 변수가 만든 오차항</span>
+        </div>
+        <div class="card-body" id="partialBox"></div>
+        <details>
+          <summary>수치 미분과 대조해 검증</summary>
+          <div class="inner" id="verifyBox"></div>
+        </details>
+      </section>
+    </div>
+  </div>
+
+  <footer>
+    <h2>이 계산기가 하는 일</h2>
+    <p>
+      측정값 <code>x₁ … xₙ</code> 으로 <code>f</code> 를 계산할 때, 각 측정의 불확도 <code>u(xᵢ)</code> 는
+      다음 식으로 결과에 전파됩니다. 변수들이 서로 독립이라고 가정한 경우입니다.
+    </p>
+    <p class="formula-display">u_c(f) = √( Σ ( ∂f/∂xᵢ · u(xᵢ) )² )</p>
+    <p style="margin-top:14px">
+      여기서 걸림돌은 <code>∂f/∂xᵢ</code> 입니다. 식이 바뀔 때마다 손으로 미분해야 하기 때문입니다.
+      이 프로그램은 수식을 계산 트리로 바꾼 뒤 <strong>전진 모드 자동 미분</strong>으로 트리를 한 번만 순회해
+      모든 변수의 편미분을 동시에 구합니다. 수치 미분처럼 미소 변화량을 정할 필요가 없어 오차가 누적되지 않고,
+      기호 미분처럼 미분한 식이 길어지지도 않습니다.
+    </p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================================================================
+     1. 토크나이저 — 수식 문자열을 토큰 목록으로 자른다
+     ================================================================ */
+  function tokenize(src) {
+    const tokens = [];
+    let i = 0;
+    while (i < src.length) {
+      const c = src[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (/[0-9.]/.test(c)) {
+        let j = i;
+        while (j < src.length && /[0-9.]/.test(src[j])) j++;
+        if (j < src.length && /[eE]/.test(src[j]) && /[0-9+\-]/.test(src[j + 1] || "")) {
+          j++;
+          if (/[+\-]/.test(src[j])) j++;
+          while (j < src.length && /[0-9]/.test(src[j])) j++;
+        }
+        const text = src.slice(i, j);
+        if (isNaN(Number(text))) throw new Error("잘못된 숫자: " + text);
+        tokens.push({ type: "num", value: Number(text) });
+        i = j; continue;
+      }
+      if (/[A-Za-z_가-힣]/.test(c)) {
+        let j = i;
+        while (j < src.length && /[A-Za-z0-9_가-힣]/.test(src[j])) j++;
+        tokens.push({ type: "name", value: src.slice(i, j) });
+        i = j; continue;
+      }
+      if ("+-*/^()".indexOf(c) >= 0) { tokens.push({ type: c }); i++; continue; }
+      throw new Error("알 수 없는 문자: '" + c + "'");
+    }
+    tokens.push({ type: "end" });
+    return tokens;
+  }
+
+  /* ================================================================
+     2. 재귀 하강 파서 — 토큰을 계산 트리로 만든다
+        expr  := term (('+'|'-') term)*
+        term  := unary (('*'|'/') unary)*
+        unary := '-'? power
+        power := atom ('^' unary)?          거듭제곱은 오른쪽 결합
+        atom  := 숫자 | 변수 | 함수'(' expr ')' | '(' expr ')'
+     ================================================================ */
+  const FUNCTIONS = ["sin", "cos", "tan", "asin", "acos", "atan", "exp", "ln", "log", "sqrt", "abs"];
+  const CONSTANTS = { pi: Math.PI, e: Math.E };
+
+  function parse(src) {
+    const tokens = tokenize(src);
+    let pos = 0;
+    const peek = () => tokens[pos];
+    const next = () => tokens[pos++];
+
+    function expr() {
+      let node = term();
+      while (peek().type === "+" || peek().type === "-") {
+        const op = next().type;
+        node = { kind: "binary", op: op, left: node, right: term() };
+      }
+      return node;
+    }
+    function term() {
+      let node = unary();
+      while (peek().type === "*" || peek().type === "/") {
+        const op = next().type;
+        node = { kind: "binary", op: op, left: node, right: unary() };
+      }
+      return node;
+    }
+    function unary() {
+      if (peek().type === "-") { next(); return { kind: "neg", operand: unary() }; }
+      if (peek().type === "+") { next(); return unary(); }
+      return power();
+    }
+    function power() {
+      const base = atom();
+      if (peek().type === "^") { next(); return { kind: "binary", op: "^", left: base, right: unary() }; }
+      return base;
+    }
+    function atom() {
+      const t = peek();
+      if (t.type === "num") { next(); return { kind: "const", value: t.value }; }
+      if (t.type === "name") {
+        next();
+        if (peek().type === "(") {
+          if (FUNCTIONS.indexOf(t.value) < 0) throw new Error("모르는 함수: " + t.value);
+          next();
+          const arg = expr();
+          if (peek().type !== ")") throw new Error("닫는 괄호가 없습니다");
+          next();
+          return { kind: "call", name: t.value, arg: arg };
+        }
+        if (Object.prototype.hasOwnProperty.call(CONSTANTS, t.value)) {
+          return { kind: "const", value: CONSTANTS[t.value], label: t.value };
+        }
+        return { kind: "var", name: t.value };
+      }
+      if (t.type === "(") {
+        next();
+        const node = expr();
+        if (peek().type !== ")") throw new Error("닫는 괄호가 없습니다");
+        next();
+        return node;
+      }
+      throw new Error("수식이 중간에 끊겼습니다");
+    }
+
+    const root = expr();
+    if (peek().type !== "end") throw new Error("수식 뒤에 해석할 수 없는 부분이 있습니다");
+    return root;
+  }
+
+  function collectVars(node, out) {
+    out = out || [];
+    if (node.kind === "var") { if (out.indexOf(node.name) < 0) out.push(node.name); }
+    else if (node.kind === "binary") { collectVars(node.left, out); collectVars(node.right, out); }
+    else if (node.kind === "neg") collectVars(node.operand, out);
+    else if (node.kind === "call") collectVars(node.arg, out);
+    return out;
+  }
+
+  /* ================================================================
+     3. 전진 모드 자동 미분
+        각 노드에서 { v: 값, d: [∂/∂x₁, ∂/∂x₂, …] } 를 함께 들고 올라간다.
+        트리를 한 번만 훑으면 모든 편미분이 동시에 나온다.
+     ================================================================ */
+  function zeros(n) { const a = new Array(n); for (let i = 0; i < n; i++) a[i] = 0; return a; }
+
+  function evalAD(node, values, vars) {
+    const n = vars.length;
+    if (node.kind === "const") return { v: node.value, d: zeros(n) };
+
+    if (node.kind === "var") {
+      const d = zeros(n);
+      d[vars.indexOf(node.name)] = 1;      // 자기 자신에 대한 미분은 1
+      return { v: values[node.name], d: d };
+    }
+
+    if (node.kind === "neg") {
+      const a = evalAD(node.operand, values, vars);
+      return { v: -a.v, d: a.d.map(function (x) { return -x; }) };
+    }
+
+    if (node.kind === "binary") {
+      const a = evalAD(node.left, values, vars);
+      const b = evalAD(node.right, values, vars);
+      if (node.op === "+") return { v: a.v + b.v, d: a.d.map(function (x, i) { return x + b.d[i]; }) };
+      if (node.op === "-") return { v: a.v - b.v, d: a.d.map(function (x, i) { return x - b.d[i]; }) };
+      if (node.op === "*") {
+        // 곱의 미분법  (uv)' = u'v + uv'
+        return { v: a.v * b.v, d: a.d.map(function (x, i) { return x * b.v + a.v * b.d[i]; }) };
+      }
+      if (node.op === "/") {
+        // 몫의 미분법  (u/v)' = (u'v − uv') / v²
+        if (b.v === 0) throw new Error("0으로 나눌 수 없습니다");
+        return { v: a.v / b.v, d: a.d.map(function (x, i) { return (x * b.v - a.v * b.d[i]) / (b.v * b.v); }) };
+      }
+      if (node.op === "^") {
+        const v = Math.pow(a.v, b.v);
+        const expConst = b.d.every(function (x) { return x === 0; });
+        if (expConst) {
+          // 지수가 상수  (uⁿ)' = n·uⁿ⁻¹·u'
+          const coef = b.v * Math.pow(a.v, b.v - 1);
+          return { v: v, d: a.d.map(function (x) { return coef * x; }) };
+        }
+        if (a.v <= 0) throw new Error("밑이 0 이하인 거듭제곱은 미분할 수 없습니다");
+        return { v: v, d: a.d.map(function (x, i) { return v * (b.d[i] * Math.log(a.v) + (b.v * x) / a.v); }) };
+      }
+      throw new Error("모르는 연산자");
+    }
+
+    if (node.kind === "call") {
+      const a = evalAD(node.arg, values, vars);
+      let v, df;                            // 연쇄법칙  f(g(x))' = f'(g(x))·g'(x)
+      switch (node.name) {
+        case "sin": v = Math.sin(a.v); df = Math.cos(a.v); break;
+        case "cos": v = Math.cos(a.v); df = -Math.sin(a.v); break;
+        case "tan": v = Math.tan(a.v); df = 1 / (Math.cos(a.v) * Math.cos(a.v)); break;
+        case "asin": v = Math.asin(a.v); df = 1 / Math.sqrt(1 - a.v * a.v); break;
+        case "acos": v = Math.acos(a.v); df = -1 / Math.sqrt(1 - a.v * a.v); break;
+        case "atan": v = Math.atan(a.v); df = 1 / (1 + a.v * a.v); break;
+        case "exp": v = Math.exp(a.v); df = v; break;
+        case "ln":
+          if (a.v <= 0) throw new Error("ln 의 입력은 0보다 커야 합니다");
+          v = Math.log(a.v); df = 1 / a.v; break;
+        case "log":
+          if (a.v <= 0) throw new Error("log 의 입력은 0보다 커야 합니다");
+          v = Math.log(a.v) / Math.LN10; df = 1 / (a.v * Math.LN10); break;
+        case "sqrt":
+          if (a.v < 0) throw new Error("sqrt 의 입력은 음수일 수 없습니다");
+          v = Math.sqrt(a.v); df = 1 / (2 * v); break;
+        case "abs": v = Math.abs(a.v); df = a.v >= 0 ? 1 : -1; break;
+        default: throw new Error("모르는 함수: " + node.name);
+      }
+      if (!isFinite(v)) throw new Error(node.name + " 의 입력 범위를 벗어났습니다");
+      return { v: v, d: a.d.map(function (x) { return df * x; }) };
+    }
+    throw new Error("알 수 없는 노드");
+  }
+
+  /* ================================================================
+     4. 불확도 전파 · 유효숫자 · 검증용 수치 미분
+     ================================================================ */
+  function isAngleVar(node, name, inside) {
+    if (node.kind === "var") return !!inside && node.name === name;
+    if (node.kind === "call") {
+      const trig = ["sin", "cos", "tan"].indexOf(node.name) >= 0;
+      return isAngleVar(node.arg, name, inside || trig);
+    }
+    if (node.kind === "binary") return isAngleVar(node.left, name, inside) || isAngleVar(node.right, name, inside);
+    if (node.kind === "neg") return isAngleVar(node.operand, name, inside);
+    return false;
+  }
+
+  function propagate(ast, vars, inputs, degrees) {
+    const values = {}, uncerts = {};
+    vars.forEach(function (name) {
+      let val = inputs[name].value, unc = inputs[name].uncertainty;
+      if (degrees && isAngleVar(ast, name, false)) {
+        val = val * Math.PI / 180;
+        unc = unc * Math.PI / 180;
+      }
+      values[name] = val;
+      uncerts[name] = unc;
+    });
+
+    const r = evalAD(ast, values, vars);
+    const terms = vars.map(function (name, i) {
+      return {
+        name: name,
+        partial: r.d[i],
+        uncertainty: uncerts[name],
+        contribution: r.d[i] * uncerts[name]
+      };
+    });
+
+    const sumSq = terms.reduce(function (s, t) { return s + t.contribution * t.contribution; }, 0);
+    terms.forEach(function (t) { t.share = sumSq === 0 ? 0 : (t.contribution * t.contribution / sumSq) * 100; });
+    terms.sort(function (a, b) { return b.share - a.share; });
+
+    return { value: r.v, uncertainty: Math.sqrt(sumSq), terms: terms, values: values };
+  }
+
+  // 불확도는 유효숫자 1자리로 반올림. 단 첫 자리가 1이나 2면 2자리를 남긴다.
+  // 측정값은 불확도의 마지막 자릿수에 맞춘다.
+  function formatResult(value, unc, forceTwo) {
+    if (!isFinite(value)) return null;
+    if (!isFinite(unc) || unc === 0) {
+      return { value: String(Number(value.toPrecision(6))), unc: "0", decimals: 0, sig: 0 };
+    }
+    const exp = Math.floor(Math.log10(Math.abs(unc)));
+    const first = Math.floor(Math.abs(unc) / Math.pow(10, exp));
+    const sig = forceTwo ? 2 : (first <= 2 ? 2 : 1);
+    const roundExp = exp - (sig - 1);
+    const step = Math.pow(10, roundExp);
+    const u = Math.ceil(unc / step - 1e-9) * step;      // 불확도는 올림이 관례
+    const x = Math.round(value / step) * step;
+    const decimals = Math.max(0, -roundExp);
+    return {
+      value: x.toFixed(decimals), unc: u.toFixed(decimals),
+      decimals: decimals, sig: sig, first: first, roundExp: roundExp,
+    };
+  }
+
+  function numericPartials(ast, vars, values) {
+    const out = {};
+    vars.forEach(function (name) {
+      const base = values[name];
+      const h = Math.abs(base) > 0 ? Math.abs(base) * 1e-6 : 1e-6;
+      const plus = Object.assign({}, values); plus[name] = base + h;
+      const minus = Object.assign({}, values); minus[name] = base - h;
+      out[name] = (evalAD(ast, plus, vars).v - evalAD(ast, minus, vars).v) / (2 * h);
+    });
+    return out;
+  }
+
+  /* ================================================================
+     4.5 기호 미분 — 편미분 "식"을 만들어 계산 과정을 보여준다
+         값은 자동 미분이 구하고, 여기서는 사람이 읽을 식을 만든다.
+     ================================================================ */
+  function num(v) { return { kind: "const", value: v }; }
+  function bin(op, l, r) { return { kind: "binary", op: op, left: l, right: r }; }
+  function callN(name, arg) { return { kind: "call", name: name, arg: arg }; }
+  function negN(x) { return { kind: "neg", operand: x }; }
+  function isZero(n) { return n.kind === "const" && !n.label && n.value === 0; }
+  function isOne(n) { return n.kind === "const" && !n.label && n.value === 1; }
+
+  // 미분 규칙을 그대로 코드로 옮긴 것
+  function diff(node, x) {
+    if (node.kind === "const") return num(0);
+    if (node.kind === "var") return num(node.name === x ? 1 : 0);
+    if (node.kind === "neg") return negN(diff(node.operand, x));
+
+    if (node.kind === "binary") {
+      const u = node.left, v = node.right;
+      const du = diff(u, x), dv = diff(v, x);
+      if (node.op === "+") return bin("+", du, dv);
+      if (node.op === "-") return bin("-", du, dv);
+      if (node.op === "*") return bin("+", bin("*", du, v), bin("*", u, dv));   // 곱의 미분법
+      if (node.op === "/") {
+        if (isZero(sim(dv))) return bin("/", du, v);                             // 분모에 이 변수가 없을 때
+        if (isZero(sim(du))) return negN(bin("/", bin("*", u, dv), bin("^", v, num(2))));
+        return bin("/", bin("-", bin("*", du, v), bin("*", u, dv)), bin("^", v, num(2)));
+      }
+      if (node.op === "^") {
+        if (isZero(sim(dv))) {                                                   // 지수가 상수: (uⁿ)' = n·uⁿ⁻¹·u'
+          return bin("*", bin("*", v, bin("^", u, bin("-", v, num(1)))), du);
+        }
+        return bin("*", bin("^", u, v),
+          bin("+", bin("*", dv, callN("ln", u)), bin("/", bin("*", v, du), u)));
+      }
+    }
+
+    if (node.kind === "call") {                                                  // 연쇄법칙
+      const u = node.arg, du = diff(u, x);
+      let outer;
+      switch (node.name) {
+        case "sin": outer = callN("cos", u); break;
+        case "cos": outer = negN(callN("sin", u)); break;
+        case "tan": outer = bin("/", num(1), bin("^", callN("cos", u), num(2))); break;
+        case "asin": outer = bin("/", num(1), callN("sqrt", bin("-", num(1), bin("^", u, num(2))))); break;
+        case "acos": outer = negN(bin("/", num(1), callN("sqrt", bin("-", num(1), bin("^", u, num(2)))))); break;
+        case "atan": outer = bin("/", num(1), bin("+", num(1), bin("^", u, num(2)))); break;
+        case "exp": outer = callN("exp", u); break;
+        case "ln": outer = bin("/", num(1), u); break;
+        case "log": outer = bin("/", num(1), bin("*", u, callN("ln", num(10)))); break;
+        case "sqrt": outer = bin("/", num(1), bin("*", num(2), callN("sqrt", u))); break;
+        case "abs": outer = bin("/", u, callN("abs", u)); break;
+        default: return num(0);
+      }
+      return bin("*", outer, du);
+    }
+    return num(0);
+  }
+
+  // 식 정리 — 0과 1을 없애고, 상수끼리 미리 계산하고, 같은 밑의 거듭제곱을 약분한다
+  function sim(n) {
+    if (n.kind === "neg") {
+      const a = sim(n.operand);
+      if (isZero(a)) return num(0);
+      if (a.kind === "neg") return a.operand;
+      if (a.kind === "const" && !a.label) return num(-a.value);
+      return negN(a);
+    }
+    if (n.kind === "call") return callN(n.name, sim(n.arg));
+    if (n.kind !== "binary") return n;
+
+    const l = sim(n.left), r = sim(n.right), op = n.op;
+
+    if (l.kind === "const" && r.kind === "const" && !l.label && !r.label) {
+      if (op === "+") return num(l.value + r.value);
+      if (op === "-") return num(l.value - r.value);
+      if (op === "*") return num(l.value * r.value);
+      if (op === "/" && r.value !== 0) return num(l.value / r.value);
+      if (op === "^") return num(Math.pow(l.value, r.value));
+    }
+    if (op === "+") { if (isZero(l)) return r; if (isZero(r)) return l; }
+    if (op === "-") { if (isZero(r)) return l; if (isZero(l)) return sim(negN(r)); }
+    if (op === "*") {
+      if (isZero(l) || isZero(r)) return num(0);
+      if (isOne(l)) return r;
+      if (isOne(r)) return l;
+      if (l.kind === "const" && !l.label && l.value === -1) return sim(negN(r));
+      if (r.kind === "const" && !r.label && r.value === -1) return sim(negN(l));
+    }
+    if (op === "/") {
+      if (isZero(l)) return num(0);
+      if (isOne(r)) return l;
+      return cancel(l, r);
+    }
+    if (op === "^") {
+      if (isOne(r)) return l;
+      if (isZero(r)) return num(1);
+      if (l.kind === "binary" && l.op === "^" && l.right.kind === "const" && !l.right.label
+          && r.kind === "const" && !r.label) {
+        return sim(bin("^", l.left, num(l.right.value * r.value)));
+      }
+    }
+    return bin(op, l, r);
+  }
+
+  function flattenMul(n, out) {
+    out = out || [];
+    if (n.kind === "binary" && n.op === "*") { flattenMul(n.left, out); flattenMul(n.right, out); }
+    else out.push(n);
+    return out;
+  }
+
+  function asPower(n) {
+    if (n.kind === "binary" && n.op === "^" && n.right.kind === "const" && !n.right.label) {
+      return { base: n.left, exp: n.right.value };
+    }
+    return { base: n, exp: 1 };
+  }
+
+  // 분자와 분모에서 같은 밑끼리 지수를 빼서 약분한다
+  function cancel(l, r) {
+    const ln = flattenMul(l).map(asPower);
+    const rn = flattenMul(r).map(asPower);
+    for (let i = 0; i < ln.length; i++) {
+      for (let j = 0; j < rn.length; j++) {
+        if (ln[i].exp > 0 && rn[j].exp > 0 && render(ln[i].base, 0) === render(rn[j].base, 0)) {
+          const d = Math.min(ln[i].exp, rn[j].exp);
+          ln[i].exp -= d; rn[j].exp -= d;
+        }
+      }
+    }
+    const build = function (arr) {
+      let coef = 1;
+      const parts = [];
+      arr.forEach(function (p) {
+        if (p.exp === 0) return;
+        if (p.base.kind === "const" && !p.base.label && p.exp === 1) { coef *= p.base.value; return; }
+        parts.push(p.exp === 1 ? p.base : bin("^", p.base, num(p.exp)));
+      });
+      let node = parts.length ? parts.reduce(function (a, b) { return bin("*", a, b); }) : null;
+      if (coef !== 1 || !node) node = node ? bin("*", num(coef), node) : num(coef);
+      return node;
+    };
+    const N = build(ln), D = build(rn);
+    if (D.kind === "const" && !D.label && D.value === 1) return N;
+    return bin("/", N, D);
+  }
+
+  const PREC = { "+": 1, "-": 1, "*": 2, "/": 2, "^": 3 };
+
+  function fmtConst(v) {
+    const t = Number.isInteger(v) ? String(v) : String(Number(v.toPrecision(6)));
+    return t.replace("-", "−");
+  }
+
+  // 계산 트리를 사람이 읽는 수식 문자열로 되돌린다
+  function render(n, parentPrec) {
+    parentPrec = parentPrec || 0;
+    if (n.kind === "const") return n.label || fmtConst(n.value);
+    if (n.kind === "var") return n.name;
+    if (n.kind === "call") return n.name + "(" + render(n.arg, 0) + ")";
+    if (n.kind === "neg") {
+      const t = "−" + render(n.operand, 2.5);
+      return parentPrec > 2 ? "(" + t + ")" : t;
+    }
+    const p = PREC[n.op];
+    const ls = render(n.left, n.op === "^" ? p + 0.5 : p);
+    const rs = render(n.right, (n.op === "-" || n.op === "/") ? p + 0.5 : p);
+    let t;
+    if (n.op === "*") t = ls + "·" + rs;
+    else if (n.op === "/") t = ls + " / " + rs;
+    else if (n.op === "^") t = ls + "^" + rs;
+    else t = ls + " " + n.op + " " + rs;
+    return p < parentPrec ? "(" + t + ")" : t;
+  }
+
+  /* ================================================================
+     5. 화면
+     ================================================================ */
+  const PRESETS = [
+    {
+      label: "단진자로 구한 중력가속도",
+      formula: "4*pi^2*L / T^2",
+      vals: { L: ["1.000", "0.002"], T: ["2.006", "0.004"] }
+    },
+    {
+      label: "밀도",
+      formula: "m / V",
+      vals: { m: ["10.00", "0.05"], V: ["5.00", "0.02"] }
+    },
+    {
+      label: "굴절률 (스넬 법칙)",
+      formula: "sin(i) / sin(r)",
+      vals: { i: ["45.0", "0.5"], r: ["30.0", "0.5"] },
+      degrees: true
+    },
+    {
+      label: "저항의 소비 전력",
+      formula: "V^2 / R",
+      vals: { V: ["12.03", "0.02"], R: ["98.5", "1.0"] }
+    },
+    {
+      label: "원기둥 부피",
+      formula: "pi * d^2 * h / 4",
+      vals: { d: ["12.40", "0.02"], h: ["50.10", "0.05"] }
+    }
+  ];
+
+  const $ = function (id) { return document.getElementById(id); };
+  const formulaEl = $("formula");
+  const varsBox = $("varsBox");
+  const resultBox = $("resultBox");
+  const shareBox = $("shareBox");
+  const partialBox = $("partialBox");
+  const verifyBox = $("verifyBox");
+  const stepsBox = $("steps");
+  const treeEl = $("tree");
+  const roundNote = $("roundNote");
+  const degreesEl = $("degrees");
+  const forceTwoEl = $("forceTwo");
+
+  const store = {};   // 변수 이름 -> { value, uncertainty } (문자열)
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function fmt(x, digits) {
+    if (!isFinite(x)) return "—";
+    if (x === 0) return "0";
+    const a = Math.abs(x);
+    if (a >= 1e6 || a < 1e-4) return x.toExponential(digits || 3).replace("e", " × 10^");
+    return Number(x.toPrecision(digits || 5)).toString();
+  }
+
+  // 계산 트리를 가지 모양으로 그린다
+  function renderTree(node, prefix, connector, out) {
+    prefix = prefix || "";
+    connector = connector || "";
+    out = out || [];
+
+    let label, children = [];
+    if (node.kind === "const") label = esc(node.label || String(node.value));
+    else if (node.kind === "var") label = '<span class="vr">' + esc(node.name) + "</span>";
+    else if (node.kind === "neg") { label = '<span class="op">−(부호)</span>'; children = [node.operand]; }
+    else if (node.kind === "call") { label = '<span class="op">' + esc(node.name) + "</span>"; children = [node.arg]; }
+    else { label = '<span class="op">' + esc(node.op) + "</span>"; children = [node.left, node.right]; }
+
+    out.push(prefix + connector + label);
+
+    // 자식 줄에 붙일 들여쓰기 — 마지막 가지면 공백, 아니면 세로선
+    const childPrefix = prefix + (connector === "" ? "" : (connector === "└─ " ? "   " : "│  "));
+    children.forEach(function (c, i) {
+      renderTree(c, childPrefix, i === children.length - 1 ? "└─ " : "├─ ", out);
+    });
+    return out;
+  }
+
+  function buildVarRows(vars) {
+    if (!vars.length) {
+      varsBox.innerHTML = '<p class="empty-note">이 식에는 변수가 없습니다. 알파벳으로 된 이름을 넣어 보세요.</p>';
+      return;
+    }
+    let html = '<table><thead><tr><th>변수</th><th style="text-align:right">측정값</th><th style="text-align:right">불확도 u</th></tr></thead><tbody>';
+    vars.forEach(function (name) {
+      if (!store[name]) store[name] = { value: "1", uncertainty: "0.01" };
+      html += '<tr>' +
+        '<td><span class="varname">' + esc(name) + '</span></td>' +
+        '<td><input type="text" inputmode="decimal" data-var="' + esc(name) + '" data-kind="value" value="' + esc(store[name].value) + '"></td>' +
+        '<td><input type="text" inputmode="decimal" data-var="' + esc(name) + '" data-kind="uncertainty" value="' + esc(store[name].uncertainty) + '"></td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    varsBox.innerHTML = html;
+
+    varsBox.querySelectorAll("input").forEach(function (input) {
+      input.addEventListener("input", function () {
+        store[input.dataset.var][input.dataset.kind] = input.value;
+        compute();
+      });
+    });
+  }
+
+  function showError(msg) {
+    resultBox.innerHTML = '<div class="error">' + esc(msg) + '</div>';
+    shareBox.innerHTML = '<p class="empty-note">계산할 수 없습니다.</p>';
+    partialBox.innerHTML = '<p class="empty-note">계산할 수 없습니다.</p>';
+    verifyBox.innerHTML = '<p class="empty-note">계산할 수 없습니다.</p>';
+    stepsBox.innerHTML = '<p class="empty-note">계산할 수 없습니다.</p>';
+    treeEl.innerHTML = "";
+    roundNote.textContent = "";
+  }
+
+  let currentVars = [];
+
+  function compute() {
+    let ast;
+    try {
+      ast = parse(formulaEl.value);
+    } catch (e) {
+      showError(e.message);
+      return;
+    }
+
+    const vars = collectVars(ast);
+    if (vars.join("\u0000") !== currentVars.join("\u0000")) {
+      currentVars = vars;
+      buildVarRows(vars);
+    }
+
+    treeEl.innerHTML = renderTree(ast, "", "", []).join("\n");
+
+    const inputs = {};
+    for (let i = 0; i < vars.length; i++) {
+      const name = vars[i];
+      const v = parseFloat(store[name].value);
+      const u = parseFloat(store[name].uncertainty);
+      if (isNaN(v)) { showError("'" + name + "' 의 측정값이 숫자가 아닙니다."); return; }
+      if (isNaN(u) || u < 0) { showError("'" + name + "' 의 불확도는 0 이상의 숫자여야 합니다."); return; }
+      inputs[name] = { value: v, uncertainty: u };
+    }
+
+    let res;
+    try {
+      res = propagate(ast, vars, inputs, degreesEl.checked);
+    } catch (e) {
+      showError(e.message);
+      return;
+    }
+    if (!isFinite(res.value)) { showError("결과가 유한한 값이 아닙니다. 입력을 확인해 주세요."); return; }
+
+    renderResult(res);
+    renderShares(res);
+    renderPartials(res);
+    renderVerify(ast, vars, res);
+    renderSteps(ast, res);
+  }
+
+  function renderResult(res) {
+    const f = formatResult(res.value, res.uncertainty, forceTwoEl.checked);
+    const rel = res.value !== 0 ? Math.abs(res.uncertainty / res.value) * 100 : Infinity;
+
+    roundNote.textContent = f && f.sig ? "불확도 유효숫자 " + f.sig + "자리 기준" : "";
+
+    let html = '<div class="result-value">' +
+      '<span>' + esc(f ? f.value : fmt(res.value)) + '</span>' +
+      '<span class="pm">±</span>' +
+      '<span class="unc">' + esc(f ? f.unc : fmt(res.uncertainty)) + '</span>' +
+      '</div>';
+
+    html += '<div class="result-sub">' +
+      '<span>상대불확도 <b>' + (isFinite(rel) ? rel.toFixed(2) + " %" : "—") + '</b></span>' +
+      '<span>반올림 전 <b>' + fmt(res.value, 8) + " ± " + fmt(res.uncertainty, 3) + '</b></span>' +
+      '</div>';
+
+    // 값과 ± 범위를 눈금 위에 표시
+    const u = res.uncertainty;
+    if (isFinite(u) && u > 0) {
+      const half = u * 2.2;                       // 보여줄 창의 반폭
+      const lo = res.value - half, hi = res.value + half;
+      const pos = function (x) { return ((x - lo) / (hi - lo)) * 100; };
+      html += '<div class="band">' +
+        '<div class="band-track"></div>' +
+        '<div class="band-range" style="left:' + pos(res.value - u) + '%;width:' + (pos(res.value + u) - pos(res.value - u)) + '%"></div>' +
+        '<div class="band-tick" style="left:' + pos(res.value) + '%"></div>' +
+        '<span class="band-label" style="left:0">' + fmt(lo, 4) + '</span>' +
+        '<span class="band-label" style="right:0">' + fmt(hi, 4) + '</span>' +
+        '</div>';
+    }
+
+    resultBox.innerHTML = html;
+  }
+
+  function renderShares(res) {
+    if (!res.terms.length) { shareBox.innerHTML = '<p class="empty-note">변수가 없습니다.</p>'; return; }
+    let html = "";
+    res.terms.forEach(function (t, idx) {
+      const dominant = idx === 0 && t.share >= 50;
+      html += '<div class="share-row' + (dominant ? " dominant" : "") + '">' +
+        '<span class="varname">' + esc(t.name) + '</span>' +
+        '<div class="share-bar"><div class="share-fill" style="width:' + t.share.toFixed(1) + '%"></div></div>' +
+        '<span class="share-pct">' + t.share.toFixed(1) + '%</span>' +
+        '</div>';
+    });
+
+    const top = res.terms[0];
+    if (top && top.share >= 50) {
+      html += '<p class="verdict"><strong>' + esc(top.name) + '</strong> 의 측정이 전체 오차의 ' +
+        top.share.toFixed(0) + '% 를 만들고 있습니다. 결과를 더 정밀하게 만들려면 ' +
+        esc(top.name) + ' 을(를) 더 정확히 재는 것이 가장 효과적입니다.</p>';
+    } else if (res.terms.length > 1) {
+      html += '<p class="verdict">특별히 지배적인 변수가 없습니다. 여러 측정이 비슷하게 오차에 기여하고 있어, 한 가지만 개선해서는 큰 효과를 보기 어렵습니다.</p>';
+    }
+    shareBox.innerHTML = html;
+  }
+
+  function renderPartials(res) {
+    let html = '<table><thead><tr>' +
+      '<th>변수</th>' +
+      '<th style="text-align:right">∂f/∂x</th>' +
+      '<th style="text-align:right">u(x)</th>' +
+      '<th style="text-align:right">∂f/∂x · u(x)</th>' +
+      '</tr></thead><tbody>';
+    res.terms.forEach(function (t) {
+      html += '<tr>' +
+        '<td><span class="varname">' + esc(t.name) + '</span></td>' +
+        '<td class="num" style="text-align:right">' + fmt(t.partial) + '</td>' +
+        '<td class="num" style="text-align:right">' + fmt(t.uncertainty) + '</td>' +
+        '<td class="num" style="text-align:right">' + fmt(t.contribution) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    partialBox.innerHTML = html;
+  }
+
+  // 계산 과정을 손으로 푼 것처럼 단계별로 보여준다
+  function renderSteps(ast, res) {
+    const deg = degreesEl.checked;
+    let html = "";
+
+    // 1단계 — 편미분식
+    html += '<div class="step"><div class="step-head">' +
+      '<span class="step-no">1단계</span>' +
+      '<span class="step-title">각 변수로 편미분한다</span></div><div class="step-body">';
+    res.terms.forEach(function (t) {
+      let expr;
+      try { expr = render(sim(diff(ast, t.name)), 0); }
+      catch (e) { expr = "—"; }
+      html += '<div><span class="lbl">∂f/∂' + esc(t.name) + '</span>' +
+        '<span class="eq">=</span>' + esc(expr) +
+        '<span class="eq">=</span><span class="val">' + fmt(t.partial, 6) + '</span></div>';
+    });
+    html += '</div>';
+    html += '<p class="step-note">식은 기호 미분으로 따로 구해 보여주는 것이고, ' +
+      '오른쪽 값은 자동 미분이 계산 트리를 한 번 훑어 구한 값입니다. 두 방법의 결과가 같아야 맞습니다.</p>';
+    html += '</div>';
+
+    // 2단계 — 각 항
+    html += '<div class="step"><div class="step-head">' +
+      '<span class="step-no">2단계</span>' +
+      '<span class="step-title">편미분에 그 변수의 불확도를 곱한다</span></div><div class="step-body">';
+    res.terms.forEach(function (t) {
+      html += '<div><span class="lbl">∂f/∂' + esc(t.name) + ' · u(' + esc(t.name) + ')</span>' +
+        '<span class="eq">=</span>' + fmt(t.partial, 6) +
+        ' × ' + fmt(t.uncertainty, 4) +
+        '<span class="eq">=</span><span class="val">' + fmt(t.contribution, 5) + '</span></div>';
+    });
+    html += '</div></div>';
+
+    // 3단계 — 제곱합의 제곱근
+    const sq = res.terms.map(function (t) {
+      const v = fmt(t.contribution, 5);
+      return (t.contribution < 0 ? "(" + v + ")" : v) + "²";
+    }).join(" + ");
+    html += '<div class="step"><div class="step-head">' +
+      '<span class="step-no">3단계</span>' +
+      '<span class="step-title">제곱해서 더한 뒤 제곱근을 씌운다</span></div><div class="step-body">' +
+      '<div><span class="lbl">u_c</span><span class="eq">=</span>√( ' + sq + ' )</div>' +
+      '<div><span class="eq">=</span><span class="val">' + fmt(res.uncertainty, 6) + '</span></div>' +
+      '</div>' +
+      '<p class="step-note">각 측정이 만든 오차를 그냥 더하지 않고 제곱해서 더하는 것은, ' +
+      '오차가 서로 독립이면 어긋난 방향이 일부 상쇄되기 때문입니다.</p></div>';
+
+    // 4단계 — 유효숫자
+    const f = formatResult(res.value, res.uncertainty, forceTwoEl.checked);
+    if (f && f.sig) {
+      const reason = forceTwoEl.checked
+        ? "2자리 고정으로 설정했으므로 2자리"
+        : (function () {
+          const josa = [1, 3, 6, 7, 8].indexOf(f.first) >= 0 ? "이라서" : "라서";
+          return f.first <= 2
+            ? "첫 유효숫자가 " + f.first + josa + " 2자리를 남김"
+            : "첫 유효숫자가 " + f.first + josa + " 1자리만 남김";
+        })();
+      html += '<div class="step"><div class="step-head">' +
+        '<span class="step-no">4단계</span>' +
+        '<span class="step-title">유효숫자를 맞춘다</span></div><div class="step-body">' +
+        '<div><span class="lbl">불확도</span><span class="eq">:</span>' + fmt(res.uncertainty, 6) +
+        ' → <span class="hi">' + esc(f.unc) + '</span> <span class="val">(' + esc(reason) + ', 올림)</span></div>' +
+        '<div><span class="lbl">측정값</span><span class="eq">:</span>' + fmt(res.value, 8) +
+        ' → <span class="hi">' + esc(f.value) + '</span> <span class="val">(불확도의 끝자리에 맞춰 반올림)</span></div>' +
+        '<div style="margin-top:6px"><span class="lbl">결과</span><span class="eq">=</span>' +
+        '<span class="hi">' + esc(f.value) + ' ± ' + esc(f.unc) + '</span></div>' +
+        '</div></div>';
+    }
+
+    if (deg) {
+      html += '<p class="step-note" style="margin-top:12px">' +
+        '각도를 도 단위로 입력했으므로, 삼각함수 안에 들어가는 변수는 라디안으로 바꾼 값으로 계산했습니다. ' +
+        '위에 보이는 편미분값도 라디안 기준입니다.</p>';
+    }
+
+    stepsBox.innerHTML = html;
+  }
+
+  function renderVerify(ast, vars, res) {
+    let num;
+    try { num = numericPartials(ast, vars, res.values); }
+    catch (e) { verifyBox.innerHTML = '<p class="empty-note">수치 미분을 계산할 수 없습니다.</p>'; return; }
+
+    let html = '<p class="card-note" style="margin:0 0 12px">' +
+      '같은 편미분을 중앙 차분 <code>(f(x+h) − f(x−h)) / 2h</code> 로도 구해 비교합니다. ' +
+      '두 값이 일치하면 자동 미분이 제대로 동작한 것입니다.</p>';
+    html += '<table><thead><tr><th>변수</th><th style="text-align:right">자동 미분</th><th style="text-align:right">수치 미분</th><th style="text-align:right">차이</th></tr></thead><tbody>';
+    let allOk = true;
+    res.terms.forEach(function (t) {
+      const n = num[t.name];
+      const diff = Math.abs(t.partial - n);
+      const scale = Math.max(1e-12, Math.abs(t.partial));
+      const ok = diff / scale < 1e-5;
+      if (!ok) allOk = false;
+      html += '<tr>' +
+        '<td><span class="varname">' + esc(t.name) + '</span></td>' +
+        '<td class="num" style="text-align:right">' + fmt(t.partial, 8) + '</td>' +
+        '<td class="num" style="text-align:right">' + fmt(n, 8) + '</td>' +
+        '<td class="num ' + (ok ? "check-ok" : "check-bad") + '" style="text-align:right">' + diff.toExponential(1) + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    html += '<p style="margin:12px 0 0;font-size:13px" class="' + (allOk ? "check-ok" : "check-bad") + '">' +
+      (allOk ? "모든 편미분이 수치 미분과 일치합니다." : "일부 값이 어긋납니다. 수치 미분 쪽의 반올림 오차일 수 있습니다.") + '</p>';
+    verifyBox.innerHTML = html;
+  }
+
+  // 예제 버튼
+  const presetsEl = $("presets");
+  PRESETS.forEach(function (p) {
+    const btn = document.createElement("button");
+    btn.className = "preset";
+    btn.type = "button";
+    btn.textContent = p.label;
+    btn.addEventListener("click", function () {
+      formulaEl.value = p.formula;
+      Object.keys(p.vals).forEach(function (k) {
+        store[k] = { value: p.vals[k][0], uncertainty: p.vals[k][1] };
+      });
+      degreesEl.checked = !!p.degrees;
+      currentVars = [];
+      compute();
+    });
+    presetsEl.appendChild(btn);
+  });
+
+  formulaEl.addEventListener("input", compute);
+  degreesEl.addEventListener("change", compute);
+  forceTwoEl.addEventListener("change", compute);
+
+  // 첫 화면 — 단진자 예제
+  store.L = { value: "1.000", uncertainty: "0.002" };
+  store.T = { value: "2.006", uncertainty: "0.004" };
+  compute();
+})();
+</script>
+</body>
+</html>
